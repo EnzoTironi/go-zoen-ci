@@ -32,4 +32,27 @@ jobs:
             tools/go.sum
 
       - name: make check-full
+        id: check
+        continue-on-error: true
         run: make check-full
+
+      - name: Report source status
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          OUTCOME: ${{ steps.check.outcome }}
+        run: |
+          set -euo pipefail
+          SHA="$(git rev-parse HEAD)"
+          STATE=success
+          DESCRIPTION="C8 hardening checks passed"
+          if [[ "$OUTCOME" != "success" ]]; then
+            STATE=failure
+            DESCRIPTION="C8 hardening checks failed"
+          fi
+          gh api --method POST "repos/EnzoTironi/go-zoen/statuses/${SHA}" \
+            -f state="$STATE" \
+            -f context=c8-hardening/public \
+            -f description="$DESCRIPTION" \
+            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          [[ "$STATE" == "success" ]]
