@@ -1,4 +1,4 @@
-# Temporary probe for the current C8 hardening head (rerun 2).
+# Temporary probe for the current C8 hardening head.
 name: c8-hardening-probe
 
 on:
@@ -31,6 +31,17 @@ jobs:
           cache-dependency-path: |
             go.sum
             tools/go.sum
+
+      - name: Report pending source status
+        env:
+          GH_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        run: |
+          SHA="$(git rev-parse HEAD)"
+          gh api --method POST "repos/EnzoTironi/go-zoen/statuses/${SHA}" \
+            -f state=pending \
+            -f context=c8-hardening/public \
+            -f description="C8 hardening checks running" \
+            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
       - name: make check-full
         id: check
