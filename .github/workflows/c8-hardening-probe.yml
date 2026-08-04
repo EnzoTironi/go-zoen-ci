@@ -1,0 +1,35 @@
+name: c8-hardening-probe
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: c8-hardening-probe
+  cancel-in-progress: true
+
+jobs:
+  check-full:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: EnzoTironi/go-zoen
+          ref: feat/compiler-c8-cli-hf-bundle
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          fetch-depth: 0
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
+
+      - name: make check-full
+        run: make check-full
