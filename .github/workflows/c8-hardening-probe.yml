@@ -1,4 +1,4 @@
-# Temporary probe for the current C8 hardening head.
+# Temporary probe for the current C8 hardening head (rerun 2).
 name: c8-hardening-probe
 
 on:
