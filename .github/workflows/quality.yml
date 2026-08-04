@@ -1,0 +1,289 @@
+# Free public dual-path CI for private EnzoTironi/go-zoen.
+# Billing: public repo + standard hosted runners → no paid private minutes.
+# Gates mirror go-zoen Makefile / private quality.yml (prek, lint, unit, race,
+# govulncheck, gitleaks, actionlint).
+
+name: quality
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        description: Private source repository (owner/name)
+        required: true
+        default: EnzoTironi/go-zoen
+      ref:
+        description: Branch, tag, or commit SHA to build
+        required: true
+        default: main
+  repository_dispatch:
+    types: [zoen-ci]
+
+permissions: {}
+
+concurrency:
+  group: zoen-quality-${{ github.event.inputs.ref || github.event.client_payload.ref || github.sha }}
+  cancel-in-progress: true
+
+env:
+  SOURCE_REPO: ${{ github.event.inputs.source_repo || github.event.client_payload.source_repo || 'EnzoTironi/go-zoen' }}
+  SOURCE_REF: ${{ github.event.inputs.ref || github.event.client_payload.ref || 'main' }}
+
+jobs:
+  resolve:
+    name: Resolve source
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.meta.outputs.sha }}
+      short: ${{ steps.meta.outputs.short }}
+      source_repo: ${{ steps.meta.outputs.source_repo }}
+    steps:
+      - name: Require token
+        env:
+          TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        run: |
+          if [[ -z "${TOKEN}" ]]; then
+            echo "::error::Missing secret PRIVATE_REPO_TOKEN on this public repo. See README.md."
+            exit 1
+          fi
+
+      - name: Checkout private source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ env.SOURCE_REPO }}
+          ref: ${{ env.SOURCE_REF }}
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          fetch-depth: 0
+
+      - name: Record SHA
+        id: meta
+        run: |
+          SHA="$(git rev-parse HEAD)"
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "short=${SHA:0:12}" >> "$GITHUB_OUTPUT"
+          echo "source_repo=${SOURCE_REPO}" >> "$GITHUB_OUTPUT"
+          echo "Building ${SOURCE_REPO}@${SHA}"
+
+      - name: Pending status on private commit
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          SHA: ${{ steps.meta.outputs.sha }}
+          REPO: ${{ steps.meta.outputs.source_repo }}
+        run: |
+          gh api --method POST "repos/${REPO}/statuses/${SHA}" \
+            -f state=pending \
+            -f context=zoen-ci/public \
+            -f description="Public dual-path CI running" \
+            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+  prek:
+    name: quality / prek
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ needs.resolve.outputs.source_repo }}
+          ref: ${{ needs.resolve.outputs.sha }}
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          fetch-depth: 0
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
+
+      - uses: j178/prek-action@5337cb91e0fa35a7ff31b9ca345126d8bbbcdf16 # v2
+
+  lint:
+    name: lint / golangci-lint
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ needs.resolve.outputs.source_repo }}
+          ref: ${{ needs.resolve.outputs.sha }}
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
+
+      - name: make lint
+        run: make lint
+
+      - name: verify lint is read-only
+        run: git diff --exit-code
+
+  test:
+    name: test / unit
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ needs.resolve.outputs.source_repo }}
+          ref: ${{ needs.resolve.outputs.sha }}
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
+
+      - name: make test
+        run: make test
+
+  race:
+    name: test / race
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ needs.resolve.outputs.source_repo }}
+          ref: ${{ needs.resolve.outputs.sha }}
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
+
+      - name: make test-race
+        run: make test-race
+
+  govulncheck:
+    name: security / govulncheck
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ needs.resolve.outputs.source_repo }}
+          ref: ${{ needs.resolve.outputs.sha }}
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
+
+      - name: make vuln
+        run: make vuln
+
+  gitleaks:
+    name: security / gitleaks
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ needs.resolve.outputs.source_repo }}
+          ref: ${{ needs.resolve.outputs.sha }}
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          fetch-depth: 0
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
+
+      - name: make secrets
+        run: make secrets
+
+  actionlint:
+    name: workflows / actionlint
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ needs.resolve.outputs.source_repo }}
+          ref: ${{ needs.resolve.outputs.sha }}
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
+
+      - name: make actionlint
+        run: make actionlint
+
+  status:
+    name: Report status
+    needs: [resolve, prek, lint, test, race, govulncheck, gitleaks, actionlint]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Commit status on private repo
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          SHA: ${{ needs.resolve.outputs.sha }}
+          REPO: ${{ needs.resolve.outputs.source_repo }}
+          PREK: ${{ needs.prek.result }}
+          LINT: ${{ needs.lint.result }}
+          TEST: ${{ needs.test.result }}
+          RACE: ${{ needs.race.result }}
+          VULN: ${{ needs.govulncheck.result }}
+          LEAKS: ${{ needs.gitleaks.result }}
+          ALINT: ${{ needs.actionlint.result }}
+        run: |
+          set -euo pipefail
+          STATE=success
+          DESC="Public dual-path CI passed"
+          for r in "$PREK" "$LINT" "$TEST" "$RACE" "$VULN" "$LEAKS" "$ALINT"; do
+            if [[ "$r" != "success" ]]; then
+              STATE=failure
+              DESC="Public dual-path CI failed"
+              break
+            fi
+          done
+          gh api --method POST "repos/${REPO}/statuses/${SHA}" \
+            -f state="${STATE}" \
+            -f context=zoen-ci/public \
+            -f description="${DESC}" \
+            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          [[ "$STATE" == "success" ]]
