@@ -56,6 +56,12 @@ make check-full
 - Set private account Actions spending limit to $0 if you want a hard backstop.
 - Docs in private repo: `docs/operations/public-ci-dual-path.md`
 
+## Confidentiality limitation
+
+This repository and its Actions logs are public. The workflow does not persist the private checkout credential and does not publish source artifacts, but command output, test names, file paths, diagnostics, and failure messages can become public. Dispatch only private-source commits whose CI output is suitable for public disclosure. Never print source contents or secrets from tests and gates; diagnose sensitive failures locally.
+
+This is residual risk in the current public-runner design. SHA pinning and `persist-credentials: false` protect integrity and credentials, not the confidentiality of process output.
+
 ## Trust boundary
 
 - The source repository is hardcoded to `EnzoTironi/go-zoen`.

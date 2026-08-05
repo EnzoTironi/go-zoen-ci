@@ -11,18 +11,15 @@ on:
       ref:
         description: Full 40-character commit SHA to build
         required: true
-  repository_dispatch:
-    types: [zoen-ci]
-
 permissions: {}
 
 concurrency:
-  group: zoen-quality-${{ github.event.inputs.ref || github.event.client_payload.ref || github.sha }}
+  group: zoen-quality-${{ github.event.inputs.ref }}
   cancel-in-progress: true
 
 env:
   SOURCE_REPO: EnzoTironi/go-zoen
-  SOURCE_REF: ${{ github.event.inputs.ref || github.event.client_payload.ref || '' }}
+  SOURCE_REF: ${{ github.event.inputs.ref || '' }}
 
 jobs:
   resolve:
@@ -56,7 +53,7 @@ jobs:
           ref: ${{ env.SOURCE_REF }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           persist-credentials: false
-          fetch-depth: 0
+          fetch-depth: 1
 
       - name: Record and verify SHA
         id: meta
@@ -96,7 +93,7 @@ jobs:
           ref: ${{ needs.resolve.outputs.sha }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           persist-credentials: false
-          fetch-depth: 0
+          fetch-depth: 1
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -264,7 +261,7 @@ jobs:
   status:
     name: Report status
     needs: [resolve, prek, lint, test, race, govulncheck, gitleaks, actionlint]
-    if: ${{ always() && !cancelled() }}
+    if: ${{ always() && !cancelled() && needs.resolve.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
