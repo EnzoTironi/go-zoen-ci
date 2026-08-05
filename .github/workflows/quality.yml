@@ -2,20 +2,21 @@
 # Billing: public repo + standard hosted runners → no paid private minutes.
 # Gates mirror go-zoen Makefile / private quality.yml (prek, lint, unit, race,
 # govulncheck, gitleaks, actionlint).
+#
+# Trust boundary (fail-closed):
+# - Source repo is hardcoded to EnzoTironi/go-zoen (no source_repo input).
+# - Input is a full 40-char commit SHA only (immutable pin).
+# - Checkout uses persist-credentials: false.
+# - Commit status zoen-ci/public publication is required (not continue-on-error).
 
 name: quality
 
 on:
   workflow_dispatch:
     inputs:
-      source_repo:
-        description: Private source repository (owner/name)
-        required: true
-        default: EnzoTironi/go-zoen
       ref:
-        description: Branch, tag, or commit SHA to build
+        description: Full 40-character commit SHA on EnzoTironi/go-zoen
         required: true
-        default: main
   repository_dispatch:
     types: [zoen-ci]
 
@@ -26,8 +27,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SOURCE_REPO: ${{ github.event.inputs.source_repo || github.event.client_payload.source_repo || 'EnzoTironi/go-zoen' }}
-  SOURCE_REF: ${{ github.event.inputs.ref || github.event.client_payload.ref || 'main' }}
+  SOURCE_REPO: EnzoTironi/go-zoen
+  SOURCE_REF: ${{ github.event.inputs.ref || github.event.client_payload.ref }}
 
 jobs:
   resolve:
@@ -39,40 +40,51 @@ jobs:
       short: ${{ steps.meta.outputs.short }}
       source_repo: ${{ steps.meta.outputs.source_repo }}
     steps:
-      - name: Require token
+      - name: Require token and full SHA
         env:
           TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          REF: ${{ env.SOURCE_REF }}
         run: |
           if [[ -z "${TOKEN}" ]]; then
-            echo "::error::Missing secret PRIVATE_REPO_TOKEN on this public repo. See README.md."
+            echo "::error::Missing secret PRIVATE_REPO_TOKEN on this public repo."
+            exit 1
+          fi
+          if [[ ! "${REF}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::ref must be a full 40-character lowercase/hex commit SHA (got: ${REF})"
             exit 1
           fi
 
       - name: Checkout private source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          repository: ${{ env.SOURCE_REPO }}
+          repository: EnzoTironi/go-zoen
           ref: ${{ env.SOURCE_REF }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Record SHA
+      - name: Record and verify SHA
         id: meta
+        env:
+          REQUESTED: ${{ env.SOURCE_REF }}
         run: |
+          set -euo pipefail
           SHA="$(git rev-parse HEAD)"
+          if [[ "${SHA}" != "${REQUESTED}" ]]; then
+            echo "::error::checked-out HEAD ${SHA} does not match requested SHA ${REQUESTED}"
+            exit 1
+          fi
           echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
           echo "short=${SHA:0:12}" >> "$GITHUB_OUTPUT"
-          echo "source_repo=${SOURCE_REPO}" >> "$GITHUB_OUTPUT"
-          echo "Building ${SOURCE_REPO}@${SHA}"
+          echo "source_repo=EnzoTironi/go-zoen" >> "$GITHUB_OUTPUT"
+          echo "Building EnzoTironi/go-zoen@${SHA}"
 
       - name: Pending status on private commit
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
           SHA: ${{ steps.meta.outputs.sha }}
-          REPO: ${{ steps.meta.outputs.source_repo }}
         run: |
-          gh api --method POST "repos/${REPO}/statuses/${SHA}" \
+          gh api --method POST "repos/EnzoTironi/go-zoen/statuses/${SHA}" \
             -f state=pending \
             -f context=zoen-ci/public \
             -f description="Public dual-path CI running" \
@@ -88,10 +100,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          repository: ${{ needs.resolve.outputs.source_repo }}
+          repository: EnzoTironi/go-zoen
           ref: ${{ needs.resolve.outputs.sha }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -112,9 +125,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          repository: ${{ needs.resolve.outputs.source_repo }}
+          repository: EnzoTironi/go-zoen
           ref: ${{ needs.resolve.outputs.sha }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -139,9 +153,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          repository: ${{ needs.resolve.outputs.source_repo }}
+          repository: EnzoTironi/go-zoen
           ref: ${{ needs.resolve.outputs.sha }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -163,9 +178,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          repository: ${{ needs.resolve.outputs.source_repo }}
+          repository: EnzoTironi/go-zoen
           ref: ${{ needs.resolve.outputs.sha }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -187,9 +203,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          repository: ${{ needs.resolve.outputs.source_repo }}
+          repository: EnzoTironi/go-zoen
           ref: ${{ needs.resolve.outputs.sha }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -211,10 +228,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          repository: ${{ needs.resolve.outputs.source_repo }}
+          repository: EnzoTironi/go-zoen
           ref: ${{ needs.resolve.outputs.sha }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -236,9 +254,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          repository: ${{ needs.resolve.outputs.source_repo }}
+          repository: EnzoTironi/go-zoen
           ref: ${{ needs.resolve.outputs.sha }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -258,11 +277,9 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Commit status on private repo
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
           SHA: ${{ needs.resolve.outputs.sha }}
-          REPO: ${{ needs.resolve.outputs.source_repo }}
           PREK: ${{ needs.prek.result }}
           LINT: ${{ needs.lint.result }}
           TEST: ${{ needs.test.result }}
@@ -270,8 +287,13 @@ jobs:
           VULN: ${{ needs.govulncheck.result }}
           LEAKS: ${{ needs.gitleaks.result }}
           ALINT: ${{ needs.actionlint.result }}
+          RESOLVE: ${{ needs.resolve.result }}
         run: |
           set -euo pipefail
+          if [[ -z "${SHA}" || "${RESOLVE}" != "success" ]]; then
+            echo "::error::resolve did not succeed; cannot publish trustworthy status"
+            exit 1
+          fi
           STATE=success
           DESC="Public dual-path CI passed"
           for r in "$PREK" "$LINT" "$TEST" "$RACE" "$VULN" "$LEAKS" "$ALINT"; do
@@ -281,7 +303,7 @@ jobs:
               break
             fi
           done
-          gh api --method POST "repos/${REPO}/statuses/${SHA}" \
+          gh api --method POST "repos/EnzoTironi/go-zoen/statuses/${SHA}" \
             -f state="${STATE}" \
             -f context=zoen-ci/public \
             -f description="${DESC}" \
