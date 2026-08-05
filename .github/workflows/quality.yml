@@ -8,14 +8,9 @@ name: quality
 on:
   workflow_dispatch:
     inputs:
-      source_repo:
-        description: Private source repository (owner/name)
-        required: true
-        default: EnzoTironi/go-zoen
       ref:
-        description: Branch, tag, or commit SHA to build
+        description: Full 40-character commit SHA to build
         required: true
-        default: main
   repository_dispatch:
     types: [zoen-ci]
 
@@ -26,8 +21,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SOURCE_REPO: ${{ github.event.inputs.source_repo || github.event.client_payload.source_repo || 'EnzoTironi/go-zoen' }}
-  SOURCE_REF: ${{ github.event.inputs.ref || github.event.client_payload.ref || 'main' }}
+  SOURCE_REPO: EnzoTironi/go-zoen
+  SOURCE_REF: ${{ github.event.inputs.ref || github.event.client_payload.ref || '' }}
 
 jobs:
   resolve:
@@ -37,7 +32,6 @@ jobs:
     outputs:
       sha: ${{ steps.meta.outputs.sha }}
       short: ${{ steps.meta.outputs.short }}
-      source_repo: ${{ steps.meta.outputs.source_repo }}
     steps:
       - name: Require token
         env:
@@ -48,12 +42,20 @@ jobs:
             exit 1
           fi
 
+      - name: Validate immutable source SHA
+        run: |
+          if [[ ! "${SOURCE_REF}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::ref must be a full lowercase 40-character commit SHA"
+            exit 2
+          fi
+
       - name: Checkout private source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: ${{ env.SOURCE_REPO }}
           ref: ${{ env.SOURCE_REF }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Record SHA
@@ -62,7 +64,6 @@ jobs:
           SHA="$(git rev-parse HEAD)"
           echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
           echo "short=${SHA:0:12}" >> "$GITHUB_OUTPUT"
-          echo "source_repo=${SOURCE_REPO}" >> "$GITHUB_OUTPUT"
           echo "Building ${SOURCE_REPO}@${SHA}"
 
       - name: Pending status on private commit
@@ -70,7 +71,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
           SHA: ${{ steps.meta.outputs.sha }}
-          REPO: ${{ steps.meta.outputs.source_repo }}
+          REPO: EnzoTironi/go-zoen
         run: |
           gh api --method POST "repos/${REPO}/statuses/${SHA}" \
             -f state=pending \
@@ -88,9 +89,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          repository: ${{ needs.resolve.outputs.source_repo }}
+          repository: EnzoTironi/go-zoen
           ref: ${{ needs.resolve.outputs.sha }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          persist-credentials: false
           fetch-depth: 0
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -112,9 +114,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          repository: ${{ needs.resolve.outputs.source_repo }}
+          repository: EnzoTironi/go-zoen
           ref: ${{ needs.resolve.outputs.sha }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -139,9 +142,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          repository: ${{ needs.resolve.outputs.source_repo }}
+          repository: EnzoTironi/go-zoen
           ref: ${{ needs.resolve.outputs.sha }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -163,9 +167,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          repository: ${{ needs.resolve.outputs.source_repo }}
+          repository: EnzoTironi/go-zoen
           ref: ${{ needs.resolve.outputs.sha }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -187,9 +192,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          repository: ${{ needs.resolve.outputs.source_repo }}
+          repository: EnzoTironi/go-zoen
           ref: ${{ needs.resolve.outputs.sha }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -211,9 +217,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          repository: ${{ needs.resolve.outputs.source_repo }}
+          repository: EnzoTironi/go-zoen
           ref: ${{ needs.resolve.outputs.sha }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          persist-credentials: false
           fetch-depth: 0
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -236,9 +243,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          repository: ${{ needs.resolve.outputs.source_repo }}
+          repository: EnzoTironi/go-zoen
           ref: ${{ needs.resolve.outputs.sha }}
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -262,7 +270,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
           SHA: ${{ needs.resolve.outputs.sha }}
-          REPO: ${{ needs.resolve.outputs.source_repo }}
+          REPO: EnzoTironi/go-zoen
           PREK: ${{ needs.prek.result }}
           LINT: ${{ needs.lint.result }}
           TEST: ${{ needs.test.result }}
