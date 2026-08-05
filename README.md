@@ -22,7 +22,7 @@ private go-zoen (source)  ──PAT checkout──►  this public repo’s Acti
 
 | Secret | Purpose |
 |--------|---------|
-| `PRIVATE_REPO_TOKEN` | Fine-grained PAT: **Contents: Read** on `go-zoen`, **Statuses: Write** (optional but recommended) |
+| `PRIVATE_REPO_TOKEN` | Fine-grained PAT: **Contents: Read** on `go-zoen`, **Commit statuses: Read and write** (required) |
 
 Create at: https://github.com/settings/personal-access-tokens
 
@@ -55,3 +55,12 @@ make check-full
 - Private-repo `quality.yml` is **manual only** (`workflow_dispatch`) so merges never burn paid private minutes.
 - Set private account Actions spending limit to $0 if you want a hard backstop.
 - Docs in private repo: `docs/operations/public-ci-dual-path.md`
+
+## Trust boundary
+
+- The source repository is hardcoded to `EnzoTironi/go-zoen`.
+- Runs accept only a full lowercase 40-character commit SHA.
+- Every checkout uses `persist-credentials: false`.
+- The workflow verifies the resolved checkout SHA before testing or reporting status.
+- Failure to publish `zoen-ci/public` fails the workflow; a green run therefore proves the status was written.
+- Superseded runs are cancelled and do not overwrite the newer run's status.

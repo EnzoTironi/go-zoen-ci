@@ -58,16 +58,19 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Record SHA
+      - name: Record and verify SHA
         id: meta
         run: |
           SHA="$(git rev-parse HEAD)"
+          if [[ "$SHA" != "$SOURCE_REF" ]]; then
+            echo "::error::checkout resolved ${SHA}, expected ${SOURCE_REF}"
+            exit 1
+          fi
           echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
           echo "short=${SHA:0:12}" >> "$GITHUB_OUTPUT"
           echo "Building ${SOURCE_REPO}@${SHA}"
 
       - name: Pending status on private commit
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
           SHA: ${{ steps.meta.outputs.sha }}
@@ -261,12 +264,11 @@ jobs:
   status:
     name: Report status
     needs: [resolve, prek, lint, test, race, govulncheck, gitleaks, actionlint]
-    if: always()
+    if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Commit status on private repo
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
           SHA: ${{ needs.resolve.outputs.sha }}
