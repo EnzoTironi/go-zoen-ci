@@ -113,6 +113,11 @@ jobs:
             go.sum
             tools/go.sum
 
+      # architecture-check (via prek) requires ripgrep; ubuntu-latest does not
+      # guarantee rg on PATH. Install explicitly so the gate does not mis-report.
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
       - uses: j178/prek-action@5337cb91e0fa35a7ff31b9ca345126d8bbbcdf16 # v2
 
   lint:
